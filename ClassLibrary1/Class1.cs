@@ -16,6 +16,8 @@ namespace Lab1PlaceGroup
     [Regeneration(RegenerationOption.Manual)]
     public class Class1 : IExternalCommand
     {
+        const int ROOMID = -2000160;
+        const int MAX_NUM = 999999999;
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             //Get application and documnet objects
@@ -25,21 +27,39 @@ namespace Lab1PlaceGroup
             Selection selection = uidoc.Selection;
             ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
             var EleIgnored = new List<ElementId>();
+            var RoomForbid = new List<ElementId>();
             foreach (ElementId id in selectedIds)
             {
                 Element temp = doc.GetElement(id);
-                if (temp.Category.Id.ToString() ==  BuiltInCategory.OST_Rooms.ToString())
+                if (temp.Category.Id.IntegerValue == ROOMID)
                 {
                     DeleteDoorsOfRoom(doc, id);
                     TaskDialog.Show("revit", "Room!");
+                    RoomForbid.Add(id);
                 }
                 else
                     EleIgnored.Add(id);
             }
-            //TravelDis(doc,EleIgnored);
+            var rel = TravelDis(doc,EleIgnored);
+            Report(rel);
             return Result.Succeeded;
         }
-        public void TravelDis(Document doc,ICollection<ElementId> selectedIds) //distances of all rooms on current level to nearest exit
+        private void Report(KeyValuePair<List<string>, List<double>> result)
+        {
+            var allRooms = result.Key;
+            var Distance = result.Value;
+            string room_name = "";
+            double dis;
+            string finalReport = "";
+            for (int i = 0; i < allRooms.Count; i++)
+            {
+                room_name = allRooms[i];
+                dis = Distance[i];
+                finalReport += room_name + "  " + dis.ToString() + "ft"+"\n";
+            }
+            TaskDialog.Show("Travel Distance", finalReport);
+        }
+        public KeyValuePair<List<string>,List<double>> TravelDis(Document doc,ICollection<ElementId> selectedIds) //distances of all rooms on current level to nearest exit
         {
 
             View currentView = doc.ActiveView;
@@ -58,6 +78,7 @@ namespace Lab1PlaceGroup
             //room location
             var levelid = ViewLevel(doc);
             var rooms = GetRoomsOnLevel(doc, levelid);
+            var final_rel = new List<double>();
             var rooms_loc = new List<XYZ>();
             foreach (Room r in rooms)
             {
@@ -139,13 +160,20 @@ namespace Lab1PlaceGroup
                         if (r == null || d == null)
                         {
                             TaskDialog.Show("null", "null");
+                            final_rel.Add(MAX_NUM);
                             continue;
                         };
-                        PathOfTravel.Create(currentView, r, d);
+                        IList<Curve> path = PathOfTravel.Create(currentView, r, d).GetCurves();
+                        final_rel.Add(calDis(path));
                     }
                     trans2.Commit();
                 }
             }
+
+            var allRoomName = new List<string>();
+            foreach (Room r in rooms) allRoomName.Add(r.Name);
+            return new KeyValuePair<List<string>, List<double>>(allRoomName, final_rel);
+
         }
         public IEnumerable<Room> GetRoomsOnLevel(Document doc,ElementId idLevel) //get all rooms on current level
         {
