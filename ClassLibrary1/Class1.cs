@@ -34,32 +34,35 @@ namespace Lab1PlaceGroup
                 if (temp.Category.Id.IntegerValue == ROOMID)
                 {
                     DeleteDoorsOfRoom(doc, id);
-                    TaskDialog.Show("revit", "Room!");
                     RoomForbid.Add(id);
                 }
                 else
                     EleIgnored.Add(id);
             }
             var rel = TravelDis(doc,EleIgnored);
-            Report(rel);
+            Report(rel,doc,RoomForbid);
             return Result.Succeeded;
         }
-        private void Report(KeyValuePair<List<string>, List<double>> result)
+        private void Report(KeyValuePair<List<ElementId>, List<double>> result,Document doc,List<ElementId> RoomForbid)
         {
             var allRooms = result.Key;
             var Distance = result.Value;
-            string room_name = "";
+            ElementId room_id;
             double dis;
             string finalReport = "";
             for (int i = 0; i < allRooms.Count; i++)
             {
-                room_name = allRooms[i];
+                room_id = allRooms[i];
+                if (RoomForbid.Contains(room_id)) continue;
+                Element room = doc.GetElement(room_id);
                 dis = Distance[i];
-                finalReport += room_name + "  " + dis.ToString() + "ft"+"\n";
+                if(dis>(MAX_NUM-1)) finalReport += room.Name + "  " + "NO PATH!!!"+ "\n";
+                else
+                    finalReport += room.Name + "  " + dis.ToString() + "ft"+"\n";
             }
             TaskDialog.Show("Travel Distance", finalReport);
         }
-        public KeyValuePair<List<string>,List<double>> TravelDis(Document doc,ICollection<ElementId> selectedIds) //distances of all rooms on current level to nearest exit
+        public KeyValuePair<List<ElementId>,List<double>> TravelDis(Document doc,ICollection<ElementId> selectedIds) //distances of all rooms on current level to nearest exit
         {
 
             View currentView = doc.ActiveView;
@@ -159,7 +162,6 @@ namespace Lab1PlaceGroup
                         XYZ r = rooms_loc[i];
                         if (r == null || d == null)
                         {
-                            TaskDialog.Show("null", "null");
                             final_rel.Add(MAX_NUM);
                             continue;
                         };
@@ -170,9 +172,9 @@ namespace Lab1PlaceGroup
                 }
             }
 
-            var allRoomName = new List<string>();
-            foreach (Room r in rooms) allRoomName.Add(r.Name);
-            return new KeyValuePair<List<string>, List<double>>(allRoomName, final_rel);
+            var allRoomName = new List<ElementId>();
+            foreach (Room r in rooms) allRoomName.Add(r.Id);
+            return new KeyValuePair<List<ElementId>, List<double>>(allRoomName, final_rel);
 
         }
         public IEnumerable<Room> GetRoomsOnLevel(Document doc,ElementId idLevel) //get all rooms on current level
