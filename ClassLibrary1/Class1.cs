@@ -18,6 +18,7 @@ namespace Lab1PlaceGroup
     {
         const int ROOMID = -2000160;
         const int MAX_NUM = 999999999;
+        public static readonly string[] ROOMFORBID = new string[1] { "kitchen"};
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
         {
             //Get application and documnet objects
@@ -28,19 +29,26 @@ namespace Lab1PlaceGroup
             ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
             var EleIgnored = new List<ElementId>();
             var RoomForbid = new List<ElementId>();
-            foreach (ElementId id in selectedIds)
+
+            var levelid = ViewLevel(doc);
+            var rooms = GetRoomsOnLevel(doc, levelid);
+            string debug = "";
+            foreach(Room room in rooms) {
+                int flag = 0;
+                debug += room.Name;
+                foreach (string roomForbid in ROOMFORBID) {
+                    if (room.Name.ToLower().Contains(roomForbid)) flag = 1;
+                }
+                if (flag == 1) RoomForbid.Add(room.Id);
+            }
+
+            foreach (ElementId id in RoomForbid)
             {
                 Element temp = doc.GetElement(id);
-                if (temp.Category.Id.IntegerValue == ROOMID)
-                {
-                    DeleteDoorsOfRoom(doc, id);
-                    RoomForbid.Add(id);
-                }
-                else
-                    EleIgnored.Add(id);
+                DeleteDoorsOfRoom(doc, id);
             }
-            var rel = TravelDis(doc,EleIgnored);
-            Report(rel,doc,RoomForbid);
+            var rel = TravelDis(doc, EleIgnored);
+            Report(rel, doc, RoomForbid);
             return Result.Succeeded;
         }
         private void Report(KeyValuePair<List<ElementId>, List<double>> result,Document doc,List<ElementId> RoomForbid)
@@ -82,7 +90,7 @@ namespace Lab1PlaceGroup
             var levelid = ViewLevel(doc);
             var rooms = GetRoomsOnLevel(doc, levelid);
             var final_rel = new List<double>();
-            var rooms_loc = CalPointOfRooms(doc, rooms);
+            var rooms_loc = CenterOfRoom(doc, rooms);
 
             //TaskDialog.Show("Revit", doors_loc.Count.ToString());
             //TaskDialog.Show("Revit", rooms_loc.Count.ToString());
@@ -138,6 +146,9 @@ namespace Lab1PlaceGroup
                     //}
                 }
             }
+
+            var RoomsPoint = CalPointOfRooms(doc, rooms, Exit2Door);
+
             using (Transaction trans2 = new Transaction(doc))
             {
                 if (trans2.Start("Path_final") == TransactionStatus.Started)
@@ -150,10 +161,10 @@ namespace Lab1PlaceGroup
                         ig.Add(temp.Category.Id);
                     }
                     settings.SetIgnoredCategoryIds(ig);
-                    for (int i =0;i<rooms_loc.Count;i++)
+                    for (int i =0;i<RoomsPoint.Count;i++)
                     {
                         XYZ d = Exit2Door[i];
-                        XYZ r = rooms_loc[i];
+                        XYZ r = RoomsPoint[i];
                         Room temp_room = doc.GetRoomAtPoint(r);
                         double halfDia = calHalfDia(temp_room);
                         if (r == null || d == null)
@@ -162,7 +173,7 @@ namespace Lab1PlaceGroup
                             continue;
                         };
                         IList<Curve> path = PathOfTravel.Create(currentView, r, d).GetCurves();
-                        final_rel.Add(calDis(path)+halfDia);
+                        final_rel.Add(calDis(path));
                     }
                     trans2.Commit();
                 }
@@ -286,18 +297,65 @@ namespace Lab1PlaceGroup
             //TaskDialog.Show("Revit", debug);
       
         }
-        public IList<XYZ> CalPointOfRooms(Document doc, IEnumerable<Room> rooms) {
-            var rel = new List<XYZ>(); 
-            //foreach (Room room in rooms) {
-            //    BoundingBoxXYZ box = room.get_BoundingBox(null);
-            //    Transform trf = box.Transform;
-            //    XYZ min_xyz = box.Min;
-            //    XYZ max_xyz = box.Max;
-            //    XYZ minInCoor = trf.OfPoint(min_xyz);
-            //    XYZ maxInCoor = trf.OfPoint(max_xyz);
-            //    XYZ finalPoint = new XYZ(minInCoor.X,maxInCoor.Y,maxInCoor.Z);
-            //    rel.Add(finalPoint);
+        public IList<XYZ> CalPointOfRooms(Document doc, IEnumerable<Room> rooms, List<XYZ> Exit2Door) {
+            var rel = new List<XYZ>();
+            using (Transaction trans = new Transaction(doc))
+            {
+                if (trans.Start("Path") == TransactionStatus.Started)
+                {
+                    int count = 0;
+                    foreach (Room room in rooms)
+                    {
+                        var exit = Exit2Door[count];
+                        BoundingBoxXYZ box = room.get_BoundingBox(null);
+                        Transform trf = box.Transform;
+                        XYZ min_xyz = box.Min;
+                        XYZ max_xyz = box.Max;
+                        XYZ minInCoor = trf.OfPoint(min_xyz);
+                        XYZ maxInCoor = trf.OfPoint(max_xyz);
+                        List<XYZ> temp = new List<XYZ>();
+                        temp.Add(new XYZ(minInCoor.X, maxInCoor.Y, minInCoor.Z));
+                        temp.Add(new XYZ(minInCoor.Y, maxInCoor.X, minInCoor.Z));
+                        temp.Add(new XYZ(maxInCoor.X, minInCoor.Y, minInCoor.Z));
+                        temp.Add(new XYZ(maxInCoor.Y, minInCoor.X, minInCoor.Z));
+
+                        XYZ final = null;
+                        double final_dis = MAX_NUM;
+                        foreach (XYZ r in temp)
+                        {
+                            if (!room.IsPointInRoom(r)) continue;
+                            PathOfTravel path =  PathOfTravel.Create(doc.ActiveView, r, exit);
+                            if (path == null) continue;
+                            double dis = calDis(path.GetCurves());
+                            if (dis < final_dis) {
+                                final_dis = dis;
+                                final = r;
+                            }
+                        }
+                        if (final == null)
+                        {
+                            LocationPoint loc = room.Location as LocationPoint;
+                            XYZ xyz = loc.Point;
+                            rel.Add(xyz);
+                        }
+                        else {
+                            rel.Add(final);
+                        }
+                    }
+                    trans.RollBack();
+                }
+            }
+            
+            //foreach (Room r in rooms)
+            //{
+            //    LocationPoint loc = r.Location as LocationPoint;
+            //    XYZ xyz = loc.Point;
+            //    rel.Add(xyz);
             //}
+            return rel;
+        }
+        public IList<XYZ> CenterOfRoom(Document doc, IEnumerable<Room> rooms) {
+            var rel = new List<XYZ>();
             foreach (Room r in rooms)
             {
                 LocationPoint loc = r.Location as LocationPoint;
