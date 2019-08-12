@@ -82,13 +82,7 @@ namespace Lab1PlaceGroup
             var levelid = ViewLevel(doc);
             var rooms = GetRoomsOnLevel(doc, levelid);
             var final_rel = new List<double>();
-            var rooms_loc = new List<XYZ>();
-            foreach (Room r in rooms)
-            {
-                LocationPoint loc = r.Location as LocationPoint;
-                XYZ xyz = loc.Point;
-                rooms_loc.Add(xyz);
-            }
+            var rooms_loc = CalPointOfRooms(doc, rooms);
 
             //TaskDialog.Show("Revit", doors_loc.Count.ToString());
             //TaskDialog.Show("Revit", rooms_loc.Count.ToString());
@@ -160,13 +154,15 @@ namespace Lab1PlaceGroup
                     {
                         XYZ d = Exit2Door[i];
                         XYZ r = rooms_loc[i];
+                        Room temp_room = doc.GetRoomAtPoint(r);
+                        double halfDia = calHalfDia(temp_room);
                         if (r == null || d == null)
                         {
                             final_rel.Add(MAX_NUM);
                             continue;
                         };
                         IList<Curve> path = PathOfTravel.Create(currentView, r, d).GetCurves();
-                        final_rel.Add(calDis(path));
+                        final_rel.Add(calDis(path)+halfDia);
                     }
                     trans2.Commit();
                 }
@@ -289,6 +285,36 @@ namespace Lab1PlaceGroup
             }
             //TaskDialog.Show("Revit", debug);
       
+        }
+        public IList<XYZ> CalPointOfRooms(Document doc, IEnumerable<Room> rooms) {
+            var rel = new List<XYZ>(); 
+            //foreach (Room room in rooms) {
+            //    BoundingBoxXYZ box = room.get_BoundingBox(null);
+            //    Transform trf = box.Transform;
+            //    XYZ min_xyz = box.Min;
+            //    XYZ max_xyz = box.Max;
+            //    XYZ minInCoor = trf.OfPoint(min_xyz);
+            //    XYZ maxInCoor = trf.OfPoint(max_xyz);
+            //    XYZ finalPoint = new XYZ(minInCoor.X,maxInCoor.Y,maxInCoor.Z);
+            //    rel.Add(finalPoint);
+            //}
+            foreach (Room r in rooms)
+            {
+                LocationPoint loc = r.Location as LocationPoint;
+                XYZ xyz = loc.Point;
+                rel.Add(xyz);
+            }
+            return rel;
+        }
+        public double calHalfDia(Room room) {
+            BoundingBoxXYZ box = room.get_BoundingBox(null);
+            Transform trf = box.Transform;
+            XYZ min_xyz = box.Min;
+            XYZ minInCoor = trf.OfPoint(min_xyz);
+            XYZ max_xyz = box.Max;
+            XYZ maxInCoor = trf.OfPoint(max_xyz);
+            XYZ point = new XYZ(maxInCoor.X, maxInCoor.Y, minInCoor.Z);
+            return minInCoor.DistanceTo(point)/2;
         }
     }
 }
