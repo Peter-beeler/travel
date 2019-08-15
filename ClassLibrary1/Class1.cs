@@ -29,6 +29,8 @@ namespace Lab1PlaceGroup
             ICollection<ElementId> selectedIds = uidoc.Selection.GetElementIds();
             var EleIgnored = new List<ElementId>();
             var RoomForbid = new List<ElementId>();
+            //var ctg_id = new ElementId(BuiltInCategory.OST_Furniture);
+            //EleIgnored.Add(ctg_id);
 
             var levelid = ViewLevel(doc);
             var rooms = GetRoomsOnLevel(doc, levelid);
@@ -64,7 +66,7 @@ namespace Lab1PlaceGroup
                 if (RoomForbid.Contains(room_id)) continue;
                 Element room = doc.GetElement(room_id);
                 dis = Distance[i];
-                if(dis>(MAX_NUM-1)) finalReport += room.Name + "  " + "NO PATH!!!"+ "\n";
+                if(dis>(MAX_NUM-1)) finalReport += room.Name + "  " + "Error\n" + "There is no egress path from this room or obstacles on the startpoint!\n";
                 else
                     finalReport += room.Name + "  " + dis.ToString() + "ft"+"\n";
             }
@@ -104,14 +106,14 @@ namespace Lab1PlaceGroup
                     //PathOfTravel.CreateMapped(currentView, rooms_loc, doors_loc);
 
                     //try to find the shortest path to the exits(one of)
-                    var ig = new List<ElementId>();
+                    //var ig = new List<ElementId>();
                     var settings = RouteAnalysisSettings.GetRouteAnalysisSettings(doc);
-                    foreach (ElementId id in selectedIds)
-                    {
-                        Element temp = doc.GetElement(id);
-                        ig.Add(temp.Category.Id);
-                    }
-                    settings.SetIgnoredCategoryIds(ig);
+                    //foreach (ElementId id in selectedIds)
+                    //{
+                    //    Element temp = doc.GetElement(id);
+                    //    ig.Add(temp.Category.Id);
+                    //}
+                    settings.SetIgnoredCategoryIds(selectedIds);
                     foreach (XYZ r in rooms_loc) {
                         double temp_len = 10000000;
                         XYZ temp_loc = null;
@@ -147,20 +149,16 @@ namespace Lab1PlaceGroup
                 }
             }
 
-            var RoomsPoint = CalPointOfRooms(doc, rooms, Exit2Door);
+            var RoomsPoint = CalPointOfRooms(doc, rooms, Exit2Door,selectedIds);
 
             using (Transaction trans2 = new Transaction(doc))
             {
                 if (trans2.Start("Path_final") == TransactionStatus.Started)
                 {
-                    var ig = new List<ElementId>();
+                    
                     var settings = RouteAnalysisSettings.GetRouteAnalysisSettings(doc);
-                    foreach (ElementId id in selectedIds)
-                    {
-                        Element temp = doc.GetElement(id);
-                        ig.Add(temp.Category.Id);
-                    }
-                    settings.SetIgnoredCategoryIds(ig);
+                    
+                    settings.SetIgnoredCategoryIds(selectedIds);
                     for (int i =0;i<RoomsPoint.Count;i++)
                     {
                         XYZ d = Exit2Door[i];
@@ -272,7 +270,7 @@ namespace Lab1PlaceGroup
             string debug = "";
             using (Transaction trans = new Transaction(doc))
             {
-                if (trans.Start("Path") == TransactionStatus.Started)
+                if (trans.Start("Del") == TransactionStatus.Started)
                 {
                     foreach (ElementId id in doors)
                     {
@@ -297,13 +295,15 @@ namespace Lab1PlaceGroup
             //TaskDialog.Show("Revit", debug);
       
         }
-        public IList<XYZ> CalPointOfRooms(Document doc, IEnumerable<Room> rooms, List<XYZ> Exit2Door) {
+        public IList<XYZ> CalPointOfRooms(Document doc, IEnumerable<Room> rooms, List<XYZ> Exit2Door,ICollection<ElementId> eleIg) {
             var rel = new List<XYZ>();
             using (Transaction trans = new Transaction(doc))
             {
                 if (trans.Start("Path") == TransactionStatus.Started)
                 {
                     int count = 0;
+                    var settings = RouteAnalysisSettings.GetRouteAnalysisSettings(doc);
+                    settings.SetIgnoredCategoryIds(eleIg);
                     foreach (Room room in rooms)
                     {
                         var exit = Exit2Door[count];
@@ -373,6 +373,10 @@ namespace Lab1PlaceGroup
             XYZ maxInCoor = trf.OfPoint(max_xyz);
             XYZ point = new XYZ(maxInCoor.X, maxInCoor.Y, minInCoor.Z);
             return minInCoor.DistanceTo(point)/2;
+        }
+        public void CurveColor(PathOfTravel p)
+        {
+            
         }
     }
 }
